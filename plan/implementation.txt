@@ -1,0 +1,214 @@
+# irish job dashboard - implementation notes
+# hiru, mar 2026
+
+---
+
+## why fastapi over flask
+
+went with fastapi because this whole thing is async from the ground up. the adzuna fetching,
+db writes, claude calls — all async. flask can do async but it's bolted on, not native.
+fastapi also gives you swagger docs at /docs for free which is genuinely useful when you're
+debugging endpoints at 1am. pydantic validation is built-in too, so the schemas do double duty
+as both API contracts and data validation. would've needed marshmallow or wtforms or something
+with flask. not worth it.
+
+---
+
+## why postgres over sqlite
+
+sqlite was tempting (zero setup) but postgres has:
+- ARRAY type: storing extracted skills as text[] is dead simple, and unnest() lets you do
+  skill frequency queries in pure sql without any python aggregation
+- JSONB: storing the full raw adzuna response as jsonb means we never lose data even if
+  our normalized columns miss something. can query into it later if needed
+- concurrent writes: the scheduler runs every 6h and can be writing while the API is reading.
+  sqlite would lock the whole file. not great
+- proper analytics queries — the salary distribution bucket query wouldn't be pretty in sqlite
+
+NOTE: asyncpg is the async postgres driver, not psycopg2. psycopg2-binary is in requirements
+only for alembic migrations (alembic needs a sync connection). don't mix them up.
+
+---
+
+## adzuna api
+
+free tier: 250 requests/day. that's the main constraint.
+get credentials at https://developer.adzuna.com — takes about 2 mins, just sign up.
+
+endpoint: https://api.adzuna.com/v1/api/jobs/ie/search/{page}
+params: app_id, app_key, results_per_page (max 50), where (default "ireland"), what (keyword)
+
+response JSON has a "results" array. each job has:
+- id (their id, not ours)
+- title, description (html stripped)
+- company.display_name
+- location.display_name (e.g. "Dublin, County Dublin")
+- category.label / category.tag
+- salary_min, salary_max (not always present)
+- salary_is_predicted ("0" or "1") — note it's a string not bool, annoying
+- contract_type, contract_time
+- created (ISO datetime string)
+- redirect_url
+
+with 250 req/day limit and syncing every 6h that's 4 syncs/day. if we fetch 5 pages at 50
+results each = 5 req per sync = 20 req/day. leaves plenty of room. could increase max_pages
+to 10 if needed, still well under limit.
+
+county extraction: adzuna location strings are inconsistent ("Dublin", "Dublin, Ireland",
+"County Dublin" etc). we just do a substring match against the 26 county names. not perfect
+but good enough — maybe 85% accuracy.
+
+---
+
+## skill extraction
+
+spacy: en_core_web_sm model. need to run:
+  python -m spacy download en_core_web_sm
+
+after this it'll be in your site-packages. the model is only used for NER (ORG/PRODUCT entities)
+to catch things like company-specific tech names that aren't in our taxonomy.
+
+the main extraction is just substring matching against the skill taxonomy sets. runs on the
+concatenated job title + description text. lowercased. it's simple but it works — tested on
+~500 jobs and the recall is decent for the irish market categories we care about.
+
+taxonomy categories:
+- tech: python, react, aws, docker, kubernetes, etc. (covers most of what dublin tech companies need)
+- finance: acca, cfa, ifrs, bloomberg, sap — lots of specific irish/EU finance certs
+- healthcare: hse, nmbi, coru (irish regulatory bodies), clinical specialties
+- construction: autocad, revit, riai (royal institute of architects ireland), engineers ireland
+- general: agile, scrum, power bi, salesforce
+
+TODO: add pharma/biotech category — lots of that in cork/dublin (pfizer, lilly, jannsen)
+NOTE: skills array is stored in postgres as text[], with asyncpg this just works
+
+---
+
+## claude api
+
+using anthropic python sdk. two functions in services/claude_insights.py:
+
+1. generate_market_insight(category, top_skills, job_count, avg_salary, county_breakdown)
+   - called from GET /api/insights/market/{category}
+   - builds a prompt with the stats, asks claude to return structured JSON
+   - returns: summary, top_skills, skill_gaps, market_note
+   - model: claude-sonnet-4-6
+
+2. analyze_job_description(description, title)
+   - called from GET /api/insights/job/{job_id}
+   - useful for drilling into a specific posting
+   - returns: key_requirements, nice_to_have, seniority, remote_friendly, summary
+
+NOTE: the claude client is sync (anthropic.Anthropic), not async. the functions are declared
+async but the client.messages.create() call is blocking. for a personal dashboard this is fine —
+insights are generated on-demand, not in hot paths. if this gets used more heavily, switch to
+anthropic.AsyncAnthropic.
+
+both functions ask for JSON-only responses. occasionally claude adds markdown wrapping (```json)
+even when told not to — might need to strip that. json.loads will catch it.
+
+---
+
+## db schema overview
+
+jobs table:
+- id (pk), adzuna_id (unique), title, company, location, county
+- category, category_tag (adzuna's raw tag e.g. "it-jobs")
+- contract_type (permanent/contract), contract_time (full_time/part_time)
+- salary_min, salary_max (floats), salary_predicted (bool)
+- description (text), redirect_url
+- skills (text[]) — extracted by spacy on ingest
+- raw_data (jsonb) — full adzuna json blob
+- posted_date, synced_at, is_active
+
+sync_logs table:
+- tracks each adzuna sync run: started_at, finished_at, status, jobs_fetched/added/updated, error
+
+---
+
+## api endpoints
+
+GET  /api/health                    — ping
+GET  /api/jobs/                     — list jobs (filters: q, category, county, contract_type, etc.)
+GET  /api/jobs/{id}                 — single job
+GET  /api/stats/overview            — total jobs, new this week, avg salary, top county
+GET  /api/stats/by-category         — jobs grouped by category
+GET  /api/stats/by-county           — jobs grouped by county
+GET  /api/stats/top-skills          — skill frequency (unnest query)
+GET  /api/stats/salary-distribution — salary bucket counts
+GET  /api/stats/sync-logs           — last 20 sync runs
+GET  /api/insights/market/{cat}     — claude market analysis for a category
+GET  /api/insights/job/{id}         — claude analysis of a specific job
+
+---
+
+## frontend pages
+
+- Dashboard — overview stats cards + 4 charts (category bar, county bar, skills bar, salary dist)
+- Jobs — filterable/searchable job list, pagination, cards with skill badges
+- Skills — top skills chart + all skills as badges
+- Insights — pick a category, hit claude, see market analysis with skill gaps
+
+vite proxies /api → localhost:8000 so no CORS issues in dev.
+tailwind for styling. recharts for the charts. react-router-dom for navigation.
+clsx for conditional class names (sidebar active state).
+
+---
+
+## how to run locally
+
+postgres setup:
+  createdb irish_jobs
+  # or: psql -c "CREATE DATABASE irish_jobs;"
+
+backend:
+  cd backend
+  cp .env.example .env
+  # fill in ADZUNA_APP_ID, ADZUNA_APP_KEY, ANTHROPIC_API_KEY
+  python -m venv venv
+  source venv/bin/activate
+  pip install -r requirements.txt
+  python -m spacy download en_core_web_sm
+  uvicorn main:app --reload --port 8000
+
+frontend:
+  cd frontend
+  npm install
+  npm run dev
+  # → http://localhost:5173
+
+on startup, fastapi runs init_db() (creates tables) then immediately kicks off an adzuna sync
+in the background. first load might show 0 jobs for a few seconds.
+
+---
+
+## gotchas
+
+- spacy model: if you forget python -m spacy download en_core_web_sm the app still runs,
+  skill extraction just falls back to taxonomy-only matching (get_nlp() returns None gracefully)
+
+- adzuna 250/day limit: with default settings (5 pages, 6h sync) we use ~20 req/day.
+  if you're hitting the limit, bump SYNC_INTERVAL_HOURS to 12 or drop ADZUNA_MAX_PAGES to 2
+
+- asyncpg not psycopg2 for async: the DATABASE_URL must use postgresql+asyncpg:// scheme.
+  SYNC_DATABASE_URL uses plain postgresql:// for alembic.
+
+- salary_is_predicted is a string "0"/"1" from adzuna, not a boolean. normalize_job() handles this.
+
+- adzuna results can have duplicate IDs across pages (rare but happens). the adzuna_id unique
+  constraint on jobs table handles this — the upsert logic updates if exists.
+
+- claude sometimes wraps json in ```json ``` even with "return only valid JSON" in the prompt.
+  TODO: add strip logic around json.loads() call
+
+---
+
+## known issues / todo
+
+- TODO: alembic migrations not wired up yet, using init_db() (create_all) for now — fine for dev
+- TODO: add pharma/biotech to skill taxonomy
+- TODO: strip html from adzuna description field more robustly (some have &amp; etc)
+- TODO: rate limiting on /api/insights/* routes (claude calls cost money)
+- TODO: add search by skill on jobs page UI (filter exists in API, not in FilterBar yet)
+- TODO: export jobs to CSV button would be handy
+- NOTE: if postgres isn't running, the app crashes on startup — could use better error handling
