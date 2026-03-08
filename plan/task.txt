@@ -1,0 +1,119 @@
+# irish job dashboard - task tracker
+
+---
+
+## DONE
+
+[Mar 1] set up repo, initial fastapi skeleton, hello world endpoint working
+[Mar 1] postgres local setup, created irish_jobs db, confirmed asyncpg connection works
+[Mar 2] models.py - jobs + sync_logs tables, mapped columns with sqlalchemy 2.0 syntax
+[Mar 2] database.py - async engine, session factory, init_db(), get_db() dependency
+[Mar 2] config.py - pydantic-settings BaseSettings, .env loading, lru_cache singleton
+[Mar 3] adzuna.py service - fetch_jobs(), fetch_categories(), normalize_job()
+[Mar 3] county extraction from adzuna location strings - substring match, 26 counties
+[Mar 3] tested adzuna API manually with httpx, got real jobs back, fields look right
+[Mar 4] skill_extractor.py - taxonomy sets (tech/finance/healthcare/construction/general)
+[Mar 4] spacy integration for NER on job descriptions, graceful fallback if model not installed
+[Mar 4] wired skill extraction into sync pipeline in main.py
+[Mar 5] all stats routes done - overview, by-category, by-county, top-skills, salary-dist
+[Mar 5] unnest() query for top skills working, tested against real data
+[Mar 5] sync_logs route, log rows being written correctly
+[Mar 5] jobs router - list with filters (q, category, county, contract, salary_min, skill)
+[Mar 5] jobs router - sorting (newest/oldest/salary_high/salary_low), pagination with ceiling div
+[Mar 6] claude_insights.py - generate_market_insight() and analyze_job_description()
+[Mar 6] insights router - /market/{category} and /job/{job_id} endpoints
+[Mar 6] CORS middleware, lifespan context, apscheduler wired up in main.py
+[Mar 6] react + vite project scaffolded, tailwind configured, routing set up
+[Mar 7] api/index.js - axios client, jobsApi, statsApi, insightsApi helpers
+[Mar 7] useJobs and useStats hooks done
+[Mar 7] Header, Sidebar, StatsCard, SkillBadge components
+[Mar 7] JobCard with salary display, skill badges, contract type colouring
+[Mar 7] FilterBar - county, contract type, time, sort dropdowns
+[Mar 7] JobList with pagination controls
+[Mar 8] all four charts done - JobsByCategory, JobsByLocation, TopSkills, SalaryRange (recharts)
+[Mar 8] Dashboard page wired up with stats + all charts
+[Mar 8] Jobs page with filters + search param from header search bar
+[Mar 8] Skills page - chart + badge grid
+[Mar 8] Insights page - category picker + InsightPanel with claude call
+[Mar 8] InsightPanel component - loading state, error handling, skill gap display
+[Mar 8] .gitignore, .env.example, requirements.txt
+
+---
+
+## IN PROGRESS
+
+- alembic migrations setup — init_db()/create_all() works for now but need proper migrations
+  before adding any schema changes. alembic init alembic is done, env.py needs the sync url wired.
+
+- testing the full sync pipeline with real adzuna credentials — dev was done with mocked responses,
+  need to verify county extraction accuracy and skill matching on real data
+
+- InsightPanel UX — works but the layout feels a bit cramped on the skill gap section. thinking
+  about a side-by-side card layout instead of the 2-col grid
+
+---
+
+## TODO
+
+[high] add alembic migration for initial schema - currently using create_all() which won't handle
+       future column additions gracefully
+
+[high] strip/clean adzuna description HTML more robustly - some descriptions have &amp; &lt; etc.
+       currently raw text is going into the db. use html.unescape() at minimum, maybe bleach.
+
+[high] add pharma/biotech skills to taxonomy - cork and dublin have huge pharma sector (pfizer,
+       lilly, jannsen, astrazeneca). missing GMP, FDA, cleanroom, validation, HPLC etc.
+
+[high] rate limit the /api/insights/* endpoints - every click costs money. add a simple
+       in-memory TTL cache (functools or cachetools). cache by category, 1h TTL.
+
+[low] search by skill filter in FilterBar UI - the API supports ?skill= already, just need
+      a text input or dropdown in the filter bar
+
+[low] CSV export button on Jobs page - simple endpoint that streams jobs as CSV
+
+[low] job detail modal or page — right now clicking a job just goes to adzuna. would be nice
+      to have an internal detail view with the claude analysis
+
+[low] dark mode — tailwind makes it easy, just hasn't been a priority
+
+[low] add a "last synced" timestamp somewhere visible in the UI — maybe sidebar footer
+
+---
+
+## BACKLOG
+
+- email digest: weekly summary of new jobs in chosen categories, send via sendgrid or resend
+- salary trends over time: store salary data per sync run, chart it over weeks
+- saved jobs: localStorage or a simple db table, let user bookmark jobs
+- job alerts: watch for new jobs matching a keyword/category combo
+- county map: ireland SVG choropleth showing job density by county (recharts doesn't do maps,
+  would need d3 or react-simple-maps)
+- adzuna categories endpoint - fetch and display all available IE categories dynamically
+  instead of hardcoding the filter dropdown
+- user notes on jobs: add a text note field per job in local db
+- compare two categories side by side in insights page
+- docker-compose.yml for easy setup (postgres + backend + frontend)
+- deploy to fly.io or railway — postgres addon + fastapi container
+
+---
+
+## BUGS
+
+BUG [open] - salary_distribution query uses column name "salary_is_predicted" directly in SQL
+  but the model column is "salary_predicted". the raw SQL in stats.py references the old name.
+  need to check migration or just fix the column reference. throws 500 on /stats/salary-distribution
+  if there's no salary data — actually might just be silent with empty results, need to verify.
+
+BUG [open] - useJobs hook dep array uses JSON.stringify(filters) which works but causes a
+  re-fetch even when filter values are referentially equal. fine for now, revisit if perf
+  becomes an issue with large datasets.
+
+BUG [open] - Jobs page: if user navigates to /jobs?q=something and then clears the search
+  in the header, the q param stays in the URL but the filter updates. minor UX issue.
+
+BUG [fixed Mar 8] - spacy model path was failing silently on some systems where the venv
+  path isn't in sys.path. added try/except OSError in get_nlp() with None fallback.
+
+BUG [fixed Mar 7] - recharts YAxis width was clipping long category names on the horizontal
+  bar chart. fixed by setting width={130} on YAxis for JobsByCategory.
