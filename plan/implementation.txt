@@ -1,5 +1,5 @@
 # irish job dashboard - implementation notes
-# hiru, mar 2026
+
 
 ---
 

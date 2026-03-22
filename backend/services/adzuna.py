@@ -1,3 +1,4 @@
+from __future__ import annotations
 import httpx
 from datetime import datetime
 from config import get_settings

@@ -1,5 +1,4 @@
 # irish job dashboard - task tracker
-# personal project, mar 2026
 
 ---
 
