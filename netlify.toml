@@ -5,9 +5,9 @@
 
 [build.environment]
   NODE_VERSION = "20"
-  # After deploying on Render, replace this with your actual backend URL
-  # e.g. https://irish-job-dashboard-backend.onrender.com/api
-  VITE_API_URL = "https://irish-job-dashboard-backend.onrender.com/api"
+  # After deploying on Railway, replace this with your actual backend URL
+  # e.g. https://irish-job-dashboard-backend.up.railway.app/api
+  VITE_API_URL = "https://irish-job-dashboard-backend.up.railway.app/api"
 
 [[redirects]]
   from   = "/*"
