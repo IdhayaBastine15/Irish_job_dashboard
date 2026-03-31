@@ -1,0 +1,14 @@
+[build]
+  base    = "frontend/"
+  publish = "frontend/dist"
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "20"
+  # Set this to your deployed backend URL (e.g. Render / Railway)
+  VITE_API_URL = "https://your-backend.onrender.com/api"
+
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
