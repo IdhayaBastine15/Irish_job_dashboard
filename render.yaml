@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: irish-job-dashboard-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt && python -m spacy download en_core_web_sm
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: irish-jobs-db
+          property: connectionString
+      - key: SYNC_DATABASE_URL
+        fromDatabase:
+          name: irish-jobs-db
+          property: connectionString
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ADZUNA_APP_ID
+        sync: false
+      - key: ADZUNA_APP_KEY
+        sync: false
+      - key: ADZUNA_BASE_URL
+        value: https://api.adzuna.com/v1/api/jobs/ie
+      - key: SYNC_INTERVAL_HOURS
+        value: "6"
+      - key: ADZUNA_RESULTS_PER_PAGE
+        value: "50"
+      - key: ADZUNA_MAX_PAGES
+        value: "5"
+
+databases:
+  - name: irish-jobs-db
+    databaseName: irish_jobs
+    plan: free
