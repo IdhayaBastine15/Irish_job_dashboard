@@ -8,7 +8,7 @@ class Settings(BaseSettings):
 
     adzuna_app_id: str = ""
     adzuna_app_key: str = ""
-    adzuna_base_url: str = "https://api.adzuna.com/v1/api/jobs/ie"
+    adzuna_base_url: str = "https://api.adzuna.com/v1/api/jobs/gb"
     adzuna_results_per_page: int = 50
     adzuna_max_pages: int = 5
 

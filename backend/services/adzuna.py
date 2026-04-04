@@ -27,7 +27,8 @@ def parse_posted_date(date_str: str | None) -> datetime | None:
     if not date_str:
         return None
     try:
-        return datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        return dt.replace(tzinfo=None)
     except (ValueError, AttributeError):
         return None
 
@@ -37,13 +38,11 @@ async def fetch_jobs(page: int = 1, category: str = None, location: str = None) 
         "app_id": settings.adzuna_app_id,
         "app_key": settings.adzuna_app_key,
         "results_per_page": settings.adzuna_results_per_page,
-        "page": page,
-        "content-type": "application/json",
-        "what": "",  # all jobs
-        "where": location or "ireland",
     }
     if category:
         params["category"] = category
+    if location:
+        params["where"] = location
 
     url = f"{settings.adzuna_base_url}/search/{page}"
 
