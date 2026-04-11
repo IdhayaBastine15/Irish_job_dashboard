@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 
 from database import get_db
-from routers import jobs, stats, insights
+from routers import jobs, stats, insights, applications, resume
 
 
 # ---------------------------------------------------------------------------
@@ -82,7 +82,11 @@ class MockAsyncSession:
         self.committed = True
 
     async def refresh(self, obj):
-        pass
+        if hasattr(obj, "id") and obj.id is None:
+            obj.id = 1
+        if hasattr(obj, "uploaded_at") and obj.uploaded_at is None:
+            from datetime import datetime
+            obj.uploaded_at = datetime.utcnow()
 
     def add(self, obj):
         self.added.append(obj)
@@ -152,6 +156,8 @@ def _build_test_app() -> FastAPI:
     app.include_router(jobs.router)
     app.include_router(stats.router)
     app.include_router(insights.router)
+    app.include_router(applications.router)
+    app.include_router(resume.router)
     return app
 
 

@@ -72,3 +72,35 @@ class InsightResponse(BaseModel):
     top_skills: list[str]
     skill_gaps: list[str]
     market_note: str
+
+
+class ApplicationCreate(BaseModel):
+    job_title: str
+    company: str
+    status: Optional[str] = "applied"
+
+class ApplicationUpdate(BaseModel):
+    job_title: Optional[str] = None
+    company: Optional[str] = None
+    status: Optional[str] = None
+
+class ApplicationOut(ApplicationCreate):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    class Config:
+        from_attributes = True
+
+class ResumeOut(BaseModel):
+    id: int
+    filename: str
+    extracted_skills: list[str]
+    uploaded_at: datetime
+    class Config:
+        from_attributes = True
+
+class JobMatchOut(BaseModel):
+    job: JobOut
+    score: float
+    matched_skills: list[str]
+    fit: str
