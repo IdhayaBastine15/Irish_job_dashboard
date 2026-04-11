@@ -1,5 +1,4 @@
 from __future__ import annotations
-import spacy
 from functools import lru_cache
 
 # irish job market skill taxonomy
@@ -51,9 +50,9 @@ ALL_SKILLS = (
 @lru_cache(maxsize=1)
 def get_nlp():
     try:
+        import spacy
         return spacy.load("en_core_web_sm")
-    except OSError:
-        # model not downloaded yet
+    except (ImportError, OSError):
         return None
 
 
