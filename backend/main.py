@@ -8,6 +8,7 @@ from routers import jobs, stats, insights
 from config import get_settings
 from services.adzuna import fetch_jobs, normalize_job
 from services.skill_extractor import extract_skills
+from services.search import ensure_index, index_job
 from models import Job, SyncLog
 from database import AsyncSessionLocal
 from sqlalchemy import select
@@ -56,6 +57,12 @@ async def sync_adzuna_jobs():
                         db.add(job)
                         added += 1
 
+                    # index into Elasticsearch
+                    try:
+                        await index_job(normalized)
+                    except Exception:
+                        pass  # ES indexing is best-effort; don't fail the sync
+
                 await db.commit()
 
             log.status = "success"
@@ -75,6 +82,10 @@ async def sync_adzuna_jobs():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    try:
+        await ensure_index()
+    except Exception:
+        pass  # ES may not be available in all environments
 
     # run initial sync on startup
     asyncio.create_task(sync_adzuna_jobs())

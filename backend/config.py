@@ -14,6 +14,8 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str = ""
 
+    elasticsearch_url: str = "http://localhost:9200"
+
     sync_interval_hours: int = 6
 
     class Config:
