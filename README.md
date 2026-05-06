@@ -11,8 +11,8 @@ Aggregates live job listings from Adzuna, extracts skills using NLP, generates A
 | Service | URL |
 |---|---|
 | Frontend | https://gleeful-valkyrie-0d7c67.netlify.app |
-| Backend API | https://irishjobdashboard-production.up.railway.app |
-| API Docs | https://irishjobdashboard-production.up.railway.app/docs |
+| Backend API | http://irish-jobs-alb-618477737.eu-west-1.elb.amazonaws.com |
+| API Docs | http://irish-jobs-alb-618477737.eu-west-1.elb.amazonaws.com/docs |
 
 ---
 
