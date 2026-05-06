@@ -5,14 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from database import init_db
 from routers import jobs, stats, insights
+from routers.pipeline import router as pipeline_router
 from config import get_settings
-from services.adzuna import fetch_jobs, normalize_job
-from services.skill_extractor import extract_skills
-from services.search import ensure_index, index_job
-from models import Job, SyncLog
+from models import SyncLog
 from database import AsyncSessionLocal
-from sqlalchemy import select
-from datetime import datetime
+from pipeline.runner import run_pipeline
 
 settings = get_settings()
 scheduler = AsyncIOScheduler()
@@ -20,63 +17,7 @@ scheduler = AsyncIOScheduler()
 
 async def sync_adzuna_jobs():
     async with AsyncSessionLocal() as db:
-        log = SyncLog(started_at=datetime.utcnow())
-        db.add(log)
-        await db.commit()
-        await db.refresh(log)
-
-        fetched = 0
-        added = 0
-        updated = 0
-
-        try:
-            for page in range(1, settings.adzuna_max_pages + 1):
-                data = await fetch_jobs(page=page)
-                results = data.get("results", [])
-                if not results:
-                    break
-
-                for raw in results:
-                    fetched += 1
-                    normalized = normalize_job(raw)
-                    normalized["skills"] = extract_skills(
-                        f"{normalized['title']} {normalized.get('description', '')}"
-                    )
-
-                    existing = (await db.execute(
-                        select(Job).where(Job.adzuna_id == normalized["adzuna_id"])
-                    )).scalar_one_or_none()
-
-                    if existing:
-                        for k, v in normalized.items():
-                            setattr(existing, k, v)
-                        existing.synced_at = datetime.utcnow()
-                        updated += 1
-                    else:
-                        job = Job(**normalized, synced_at=datetime.utcnow())
-                        db.add(job)
-                        added += 1
-
-                    # index into Elasticsearch
-                    try:
-                        await index_job(normalized)
-                    except Exception:
-                        pass  # ES indexing is best-effort; don't fail the sync
-
-                await db.commit()
-
-            log.status = "success"
-        except Exception as e:
-            log.status = "failed"
-            log.error = str(e)
-        finally:
-            log.jobs_fetched = fetched
-            log.jobs_added = added
-            log.jobs_updated = updated
-            log.finished_at = datetime.utcnow()
-            await db.commit()
-
-        print(f"[sync] done — fetched={fetched} added={added} updated={updated}")
+        await run_pipeline(db)
 
 
 @asynccontextmanager
@@ -127,6 +68,7 @@ app.add_middleware(
 app.include_router(jobs.router)
 app.include_router(stats.router)
 app.include_router(insights.router)
+app.include_router(pipeline_router)
 
 
 @app.get("/api/health")
