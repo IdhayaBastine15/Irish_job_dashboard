@@ -5,7 +5,7 @@
 
 [[redirects]]
   from = "/api/*"
-  to = "https://irish-jobs-alb-618477737.eu-west-1.elb.amazonaws.com/api/:splat"
+  to = "https://irishjobdashboard-production.up.railway.app/api/:splat"
   status = 200
   force = true
 

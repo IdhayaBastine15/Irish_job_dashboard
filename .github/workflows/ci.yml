@@ -8,7 +8,7 @@ on:
 
 env:
   AWS_REGION: eu-west-1
-  ECR_REPOSITORY: 431684229225.dkr.ecr.eu-west-1.amazonaws.com/irish-jobs-backend
+  ECR_REPOSITORY: irish-jobs-backend
   ECS_CLUSTER: irish-jobs-cluster
   ECS_SERVICE: irish-jobs-backend
 
